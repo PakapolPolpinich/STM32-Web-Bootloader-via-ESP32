@@ -377,101 +377,6 @@ void Setup_Server(){
 
 /*////////////////////////////////////////////////////////////////////////////////////////////////////*/
 
-// const char* uploadFormHTML() {
-//   return R"rawliteral(
-// <!DOCTYPE html>
-// <html>
-// <head>
-//   <meta charset="UTF-8">
-//   <title>ESP32 OTA Upload</title>
-//   <style>
-//     .bar{
-//       display:inline-block;
-//       width:260px;
-//       padding:6px;
-//       background:#d9d9d9;
-//       border-radius:4px
-//     }
-//     .btn{
-//       padding:8px 28px;
-//       border:0;
-//       border-radius:4px;
-//       font-weight:bold;
-//       cursor:pointer
-//     }
-//     .upload {
-//       background:#4adbd9;
-//       color:#fff
-//     }
-//     .erase {
-//       background:#f23c0f;
-//       color:#fff
-//     }
-//     #progress {
-//       width: 100%;
-//       background: #ddd;
-//       border-radius: 6px;
-//       margin-top: 10px;
-//     }
-//     #bar {
-//       width: 0%;
-//       background: #4adbd9;
-//       color: #fff;
-//       border-radius: 6px;
-//       padding: 4px 0;
-//     }
-
-
-//   </style>
-// </head>
-// <body>
-//   <h2>Upload .bin ESP32</h2>
-
-//   <!-- show path -->
-//   <div id="path" class="bar">Path</div>
-//   <input id="file" type="file" name="firmware" onchange="showName(this)">
-//   <br><br>
-
-//   <!-- buttons -->
-//   <button class="btn upload" onclick="sendUpload()">Upload</button>
-//   <button class="btn erase" onclick="sendErase()">ERASE</button>
-
-//   <!-- state monitor -->
-//   <div id='status' class='bar'>State: NONE <span id="light"></span></div>
-
-//   <script>
-//     function showName(input){
-//       const bar = document.getElementById('path');
-//       bar.textContent = input.files.length ? input.files[0].name : 'Path';
-//     }
-
-//     async function sendUpload(){
-//       const file = document.getElementById('file').files[0];
-//       if(!file){ alert('Choose file please'); return; }
-
-//       const fd = new FormData();
-//       fd.append('firmware', file);
-//       await fetch('/upload', {method:'POST', body:fd});
-//     }
-
-//     async function sendErase(){
-//       await fetch('/erase', {method:'POST'});
-//     }
-
-//     const ws = new WebSocket('ws://' + location.host + '/ws');
-
-//     ws.onmessage = function(e){
-//   let j = JSON.parse(e.data);
-//   document.getElementById('status').innerHTML = 'State: ' + j.state + ' <span id="light"></span>';
-//   let b = document.getElementById('bar');
-//   b.style.width = j.progress + '%';
-//   b.textContent = j.progress + '%';
-// };
-//   </script>
-// </body>
-// </html>
-// )rawliteral";
-// }
 const char* uploadFormHTML() {
   return R"rawliteral(
 <!DOCTYPE html>
@@ -545,6 +450,10 @@ const char* uploadFormHTML() {
     .red {
       background: #d50000 !important;
     }
+
+    .orange {
+       background: #f23c0f !important; /* same color as erase button */
+    }
   </style>
 </head>
 <body>
@@ -568,6 +477,7 @@ const char* uploadFormHTML() {
   </div>
 
   <script>
+    let currentProcess = '';  // "upload" or "erase"
     function showName(input) {
       const bar = document.getElementById('path');
       bar.textContent = input.files.length ? input.files[0].name : 'Path';
@@ -579,24 +489,44 @@ const char* uploadFormHTML() {
     }
 
     async function sendUpload() {
-      const file = document.getElementById('file').files[0];
-      if (!file) { alert('Choose file please'); return; }
+      currentProcess = 'upload';
+      const fileInput = document.getElementById('file');
+      const file = fileInput.files[0];
 
+      // If no file is selected, show alert
+      if (!file) {
+        alert('Please choose a file');
+        return;
+      }
+
+      // ✅ Check if file extension is .bin (case-insensitive)
+      if (!file.name.toLowerCase().endsWith('.bin')) {
+        alert('❌ Only .bin files are allowed');
+        fileInput.value = ''; // Clear the file input
+        document.getElementById('path').textContent = 'Path'; // Reset displayed filename
+        return;
+      }
+
+      // Disable the buttons during upload
       lockUI(true);
-      document.getElementById('status').innerHTML = 
+      document.getElementById('status').innerHTML =
         'State: UPLOADING… <span id="light" class=""></span>';
 
+      // Prepare form data for upload
       const fd = new FormData();
       fd.append('firmware', file);
+
       try {
-        await fetch('/upload', { method: 'POST', body: fd });
+        await fetch('/upload', { method: 'POST', body: fd }); // Send file to server
       } catch (e) {
-        alert('Upload error');
-        lockUI(false);
+        alert('Upload error'); // If error, show message
+        lockUI(false); // Re-enable buttons
       }
-    }
+    }   
+
 
     async function sendErase() {
+      currentProcess = 'erase';
       lockUI(true);
       document.getElementById('status').innerHTML = 
         'State: ERASING… <span id="light" class=""></span>';
@@ -619,6 +549,16 @@ const char* uploadFormHTML() {
       let b = document.getElementById('bar');
       b.style.width  = j.progress + '%';
       b.textContent  = j.progress + '%';
+
+      if (j.state.includes('ERASING')) {
+      b.className = 'orange';
+    } else if (j.state.includes('WRITING')) {
+      b.className = 'upload';
+     } else if (['Ready to use STM32', 'WRITING DONE', 'DONE'].includes(j.state)) {
+  b.className = (currentProcess === 'erase') ? 'orange' : 'upload';
+}else {
+      b.className = '';
+    }
 
       let light = document.getElementById('light');
       if (j.state.includes('Fail') || j.state.includes('TIMEOUT')) {
