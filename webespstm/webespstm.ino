@@ -453,7 +453,7 @@ const char* uploadFormHTML() {
       bar.textContent = input.files.length ? input.files[0].name : 'Path';
     }
 
-    async function sendUpload(){
+    async function sendUpload(){//
       const file = document.getElementById('file').files[0];
       if(!file){ alert('Choose file please'); return; }
 
